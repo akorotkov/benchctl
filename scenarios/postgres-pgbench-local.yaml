@@ -1,0 +1,119 @@
+# postgres-pgbench-local.yaml — Postgres pgbench, local docker-compose
+apiVersion: bench/v1
+kind: Scenario
+metadata:
+  name: postgres-pgbench-local
+  labels:
+    engine: postgres
+    workload: pgbench
+    platform: local
+inputs:
+  scale:
+    type: int
+    default: 1
+    description: pgbench scale factor (100,000 pgbench_accounts rows per unit)
+  clients:
+    type: int
+    default: 2
+    description: Number of concurrent pgbench clients
+  duration_seconds:
+    type: int
+    default: 60
+    description: Duration of each measured run, in seconds
+  postgres_docker_image:
+    type: string
+    default: "postgres:17"
+    description: Docker image for the Postgres service
+  collector:
+    type: string
+    default: stdout
+    description: Collector provider to emit results to
+  effective_date:
+    type: string
+    default: ""
+    description: 'Metric timestamp override: "auto" (today, UTC midnight), "YYYYMMDD" (backfill), or empty for now'
+  file_enabled:
+    type: bool
+    default: false
+    description: Whether to write a results file to disk
+  db_user:
+    type: string
+    default: "bench"
+    description: Postgres user name for the docker-compose service
+  db_password:
+    type: string
+    default: "bench"
+    description: Postgres password for the docker-compose service
+target:
+  provider: docker-compose
+  config:
+    services:
+      - name: postgres
+        definition: ./services/postgres/docker-compose.yml
+        vars:
+          image: "{{ inputs.postgres_docker_image }}"
+          user: "{{ inputs.db_user }}"
+          password: "{{ inputs.db_password }}"
+          db: tpcc
+suite:
+  benchmarks:
+    - name: postgres
+      using: postgres
+      steps:
+        - name: get-pg-version
+          type: metadata
+          command: sql
+          args:
+            name: pg_version
+            query: "SELECT version()"
+        # Create and load the standard pgbench tables.
+        - name: init
+          type: pgbench
+          command: init
+          args:
+            scale: "{{ inputs.scale }}"
+        - name: pre-benchmark-checkpoint
+          type: sql
+          args:
+            query: "CHECKPOINT"
+        # A built-in script: one primary-key lookup per transaction.
+        - name: select-only
+          type: pgbench
+          command: run
+          args:
+            builtin: select-only
+            client: "{{ inputs.clients }}"
+            jobs: "{{ inputs.clients }}"
+            time: "{{ inputs.duration_seconds }}"
+            protocol: prepared
+            no-vacuum: ""
+        # A custom script, given inline: nine random lookups in one statement.
+        # --scale sets :scale for the script, as it does for pgbench's own.
+        - name: read-only-9
+          type: pgbench
+          command: run
+          args:
+            script: |
+              \set aid1 random(1, 100000 * :scale)
+              \set aid2 random(1, 100000 * :scale)
+              \set aid3 random(1, 100000 * :scale)
+              \set aid4 random(1, 100000 * :scale)
+              \set aid5 random(1, 100000 * :scale)
+              \set aid6 random(1, 100000 * :scale)
+              \set aid7 random(1, 100000 * :scale)
+              \set aid8 random(1, 100000 * :scale)
+              \set aid9 random(1, 100000 * :scale)
+              SELECT abalance FROM pgbench_accounts WHERE aid IN (:aid1, :aid2, :aid3, :aid4, :aid5, :aid6, :aid7, :aid8, :aid9);
+            scale: "{{ inputs.scale }}"
+            client: "{{ inputs.clients }}"
+            jobs: "{{ inputs.clients }}"
+            time: "{{ inputs.duration_seconds }}"
+            protocol: prepared
+            no-vacuum: ""
+driver:
+  provider: local
+collector:
+  provider: "{{ inputs.collector }}"
+  config:
+    effective_date: "{{ inputs.effective_date }}"
+    file_enabled: "{{ inputs.file_enabled }}"
