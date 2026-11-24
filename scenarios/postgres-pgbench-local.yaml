@@ -20,6 +20,14 @@ inputs:
     type: int
     default: 60
     description: Duration of each measured run, in seconds
+  builtin:
+    type: string
+    default: "select-only"
+    description: 'pgbench built-in script for the builtin step: tpcb-like, simple-update or select-only'
+  script:
+    type: string
+    default: "SELECT 1;"
+    description: Text of the custom script for the custom-script step
   postgres_docker_image:
     type: string
     default: "postgres:17"
@@ -76,34 +84,24 @@ suite:
           type: sql
           args:
             query: "CHECKPOINT"
-        # A built-in script: one primary-key lookup per transaction.
-        - name: select-only
+        # One of pgbench's built-in scripts.
+        - name: builtin
           type: pgbench
           command: run
           args:
-            builtin: select-only
+            builtin: "{{ inputs.builtin }}"
             client: "{{ inputs.clients }}"
             jobs: "{{ inputs.clients }}"
             time: "{{ inputs.duration_seconds }}"
             protocol: prepared
             no-vacuum: ""
-        # A custom script, given inline: nine random lookups in one statement.
-        # --scale sets :scale for the script, as it does for pgbench's own.
-        - name: read-only-9
+        # A custom script, given inline. --scale sets :scale for the script,
+        # as it does for the built-in ones.
+        - name: custom-script
           type: pgbench
           command: run
           args:
-            script: |
-              \set aid1 random(1, 100000 * :scale)
-              \set aid2 random(1, 100000 * :scale)
-              \set aid3 random(1, 100000 * :scale)
-              \set aid4 random(1, 100000 * :scale)
-              \set aid5 random(1, 100000 * :scale)
-              \set aid6 random(1, 100000 * :scale)
-              \set aid7 random(1, 100000 * :scale)
-              \set aid8 random(1, 100000 * :scale)
-              \set aid9 random(1, 100000 * :scale)
-              SELECT abalance FROM pgbench_accounts WHERE aid IN (:aid1, :aid2, :aid3, :aid4, :aid5, :aid6, :aid7, :aid8, :aid9);
+            script: "{{ inputs.script }}"
             scale: "{{ inputs.scale }}"
             client: "{{ inputs.clients }}"
             jobs: "{{ inputs.clients }}"

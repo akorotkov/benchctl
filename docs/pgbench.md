@@ -36,14 +36,13 @@ steps:
     command: init
     args:
       scale: "{{ inputs.scale }}"
-  - name: read-only-9
+  - name: my-script
     type: pgbench
     command: run
     args:
       script: |
-        \set aid1 random(1, 100000 * :scale)
-        \set aid2 random(1, 100000 * :scale)
-        SELECT abalance FROM pgbench_accounts WHERE aid IN (:aid1, :aid2);
+        \set aid random(1, 100000 * :scale)
+        SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
       scale: "{{ inputs.scale }}"   # sets :scale for the script
       client: "{{ inputs.clients }}"
       jobs: "{{ inputs.clients }}"
@@ -56,7 +55,10 @@ A workload that needs its own schema or functions, rather than the standard
 tables, creates them with `type: sql` steps before the `run` steps; see
 [concepts.md](concepts.md#scenario-yaml-reference).
 
-`scenarios/postgres-pgbench-local.yaml` is a complete local example.
+`scenarios/postgres-pgbench-local.yaml` is a complete local example. It
+names no particular workload: the `builtin` and `script` inputs pick what
+its two run steps execute, e.g.
+`--set builtin=tpcb-like --set script="$(cat my-script.sql)"`.
 
 ## Metrics
 
