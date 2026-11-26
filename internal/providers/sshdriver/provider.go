@@ -71,6 +71,12 @@ type Config struct {
 	// Benchctl is the loaded user configuration, used to resolve the store
 	// URL/anon key and metrics credentials to pass to the remote driver.
 	Benchctl *config.Config
+	// ExistingHost makes the provider drive a host something else already
+	// provisioned, typically the target instance itself, instead of creating
+	// one with OpenTofu. Provision then only reads the host's address and SSH
+	// credentials from the config (see provisionExisting), and Teardown leaves
+	// the host alone: it belongs to whoever created it.
+	ExistingHost bool
 }
 
 // Provider implements engine.DriverProvider, engine.AsyncBootstrapper,
@@ -106,6 +112,9 @@ func (p *Provider) Provision(ctx context.Context, runID string, cfg map[string]a
 		if err := p.ensureBenchctlBinary(binPath); err != nil {
 			return nil, fmt.Errorf("%s: %w", p.cfg.ProviderName, err)
 		}
+	}
+	if p.cfg.ExistingHost {
+		return p.provisionExisting(cfg)
 	}
 
 	module, err := parseTofuConfig(cfg)
@@ -184,6 +193,37 @@ func (p *Provider) Provision(ctx context.Context, runID string, cfg map[string]a
 	return outputs, nil
 }
 
+// provisionExisting returns the outputs for a host that already exists. It
+// creates nothing, so it returns no tofu work dir either.
+//
+// Expected config keys:
+//
+//	host                  string  address to SSH to (required)
+//	ssh_private_key_path  string  local path to the host's SSH key (required)
+//	ssh_user              string  SSH username (default: cfg.DefaultSSHUser)
+//	instance_type         string  the host's instance type, which picks the
+//	                              benchctl binary's architecture
+func (p *Provider) provisionExisting(cfg map[string]any) (engine.Outputs, error) {
+	host, _ := cfg["host"].(string)
+	keyPath, _ := cfg["ssh_private_key_path"].(string)
+	var missing []string
+	if host == "" {
+		missing = append(missing, "host")
+	}
+	if keyPath == "" {
+		missing = append(missing, "ssh_private_key_path")
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("%s: config.%s required", p.cfg.ProviderName, strings.Join(missing, " and config."))
+	}
+	consolelog.Println(p.out, fmt.Sprintf("%s: using existing host %s", p.cfg.ProviderName, host))
+	return engine.Outputs{
+		outputKeyPublicIP:   host,
+		outputKeySSHKeyPath: keyPath,
+		"ssh_user":          p.sshUser(cfg),
+	}, nil
+}
+
 // Setup is a no-op when used in synchronous mode. In async mode, driver setup
 // runs on the remote instance itself via Bootstrap + `benchctl resume`.
 func (*Provider) Setup(_ context.Context, _ map[string]any, _ engine.Outputs) error {
@@ -200,6 +240,10 @@ func (p *Provider) Collect(_ context.Context, _ map[string]any, _ engine.Outputs
 
 // Teardown runs `tofu destroy` using the work dir stored in outputs.
 func (p *Provider) Teardown(ctx context.Context, outputs engine.Outputs) error {
+	if p.cfg.ExistingHost {
+		consolelog.Println(p.out, fmt.Sprintf("%s: nothing to tear down; the host belongs to whoever provisioned it", p.cfg.ProviderName))
+		return nil
+	}
 	workDir := outputs[engine.OutputKeyTofuWorkDir]
 	if workDir == "" {
 		return fmt.Errorf("%s: teardown: missing tofu work dir in outputs", p.cfg.ProviderName)
@@ -750,11 +794,15 @@ func (p *Provider) benchctlBinaryPath(cfg map[string]any) string {
 	return filepath.Join("bin", name)
 }
 
-// targetArch returns "amd64" or "arm64" for the driver instance, based on
-// cfg.vars.instance_type via cfg.ArchFromInstanceType.
+// targetArch returns "amd64" or "arm64" for the driver instance, based on its
+// instance type via cfg.ArchFromInstanceType: cfg.instance_type for an
+// existing host, cfg.vars.instance_type (the tofu variable) otherwise.
 func (p *Provider) targetArch(cfg map[string]any) string {
-	vars, _ := cfg["vars"].(map[string]any)
-	instanceType, _ := vars["instance_type"].(string)
+	instanceType, _ := cfg["instance_type"].(string)
+	if !p.cfg.ExistingHost || instanceType == "" {
+		vars, _ := cfg["vars"].(map[string]any)
+		instanceType, _ = vars["instance_type"].(string)
+	}
 	return p.cfg.ArchFromInstanceType(instanceType)
 }
 

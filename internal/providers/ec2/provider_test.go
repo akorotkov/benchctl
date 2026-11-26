@@ -1,6 +1,11 @@
 package ec2
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"github.com/dbarena/benchctl/internal/config"
+)
 
 func TestArchFromInstanceType(t *testing.T) {
 	tests := []struct {
@@ -21,5 +26,13 @@ func TestArchFromInstanceType(t *testing.T) {
 				t.Errorf("archFromInstanceType(%q) = %q, want %q", tt.instanceType, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNewOnTarget_IsAnExistingHostDriver(t *testing.T) {
+	p := NewOnTarget(&config.Config{})
+	// Teardown must not run tofu (there is no work dir) and must not fail.
+	if err := p.Teardown(context.Background(), nil); err != nil {
+		t.Fatalf("Teardown: %v", err)
 	}
 }

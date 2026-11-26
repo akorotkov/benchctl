@@ -203,6 +203,8 @@ func buildDriverProvider(cfg *config.Config, name string) (engine.DriverProvider
 		return local.New(), nil
 	case "ec2":
 		return ec2.New(cfg), nil
+	case ec2.ProviderNameOnTarget:
+		return ec2.NewOnTarget(cfg), nil
 	case "gce":
 		return gce.New(cfg), nil
 	default:

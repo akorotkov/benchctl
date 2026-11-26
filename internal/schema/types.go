@@ -150,6 +150,10 @@ const (
 	MetadataCommandRTT = "rtt"
 )
 
+// DriverProviderEC2Target is the driver provider that runs the workload on
+// the EC2 target instance itself (see internal/providers/ec2.NewOnTarget).
+const DriverProviderEC2Target = "ec2-target"
+
 // Values a `type: pgbench` step may set for `command`, and the one arg the
 // pgbench adapter handles itself rather than passing it through to pgbench:
 // the text of a custom script.

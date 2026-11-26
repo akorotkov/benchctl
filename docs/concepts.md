@@ -8,7 +8,7 @@ A scenario is a YAML file that defines a benchmark along four orthogonal axes:
 |---|---|---|
 | **Target** | Database under test | `docker-compose`, `opentofu`, `supabase` |
 | **Workload** | Load to generate | `go-tpc`, `k6`, `pgbench` (see [pgbench.md](pgbench.md)), `shell` |
-| **Driver** | Where the load generator runs | `local`, `ec2` |
+| **Driver** | Where the load generator runs | `local`, `ec2`, `ec2-target` (on the EC2 target itself), `gce` |
 | **Collector** | Where results go | `stdout`, `victoriametrics` |
 
 benchctl calls providers and adapters as executables; it delegates to docker-compose, opentofu, and Kubernetes rather than reimplementing them. The YAML describes *what* you want; providers handle *how*.

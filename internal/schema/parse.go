@@ -188,6 +188,9 @@ func (s *Scenario) Validate() error {
 			if step.Scope == "driver" {
 				return fmt.Errorf("suite.between-benchmarks[%d] (%q): command \"reboot\" is not valid for scope \"driver\"", i, step.Name)
 			}
+			if s.Driver.Provider == DriverProviderEC2Target {
+				return fmt.Errorf("suite.between-benchmarks[%d] (%q): command \"reboot\" is not valid with driver provider %q: the run is driven from the target, so rebooting it would kill the run", i, step.Name, DriverProviderEC2Target)
+			}
 		case "trim":
 			if step.Scope == "driver" {
 				return fmt.Errorf("suite.between-benchmarks[%d] (%q): command \"trim\" is not valid for scope \"driver\"", i, step.Name)

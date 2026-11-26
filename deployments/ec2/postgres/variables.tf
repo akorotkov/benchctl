@@ -83,3 +83,20 @@ variable "ami" {
   }
 }
 
+
+variable "pgbench_enabled" {
+  description = "Whether to install pgbench on the instance, for scenarios that run the workload on the target itself (driver provider ec2-target)."
+  type        = bool
+  default     = false
+}
+
+variable "huge_pages_gb" {
+  description = "GiB of huge pages (of the kernel's default size) to reserve at boot for the database's shared memory; 0 reserves none. Services use them with huge_pages=on."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.huge_pages_gb >= 0 && floor(var.huge_pages_gb) == var.huge_pages_gb
+    error_message = "huge_pages_gb must be a non-negative whole number."
+  }
+}

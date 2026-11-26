@@ -266,6 +266,38 @@ locals {
     apt_get_retry install -y docker-ce docker-ce-cli containerd.io
     usermod -aG docker ubuntu
 
+    # ── pgbench (optional) ────────────────────────────────────────────────────
+    # For scenarios whose workload runs on this instance itself (driver
+    # provider ec2-target). Debian ships pgbench with the server package, not
+    # the client one; createcluster.d keeps it from creating and starting a
+    # cluster of its own, which would also take port 5432 from the services.
+    # Unlike Vector, a failure here is fatal: the run cannot start without it.
+    if [ "${var.pgbench_enabled}" = "true" ]; then
+      mkdir -p /etc/postgresql-common/createcluster.d
+      echo 'create_main_cluster = false' > /etc/postgresql-common/createcluster.d/benchctl.conf
+      apt_get_retry install -y --no-install-recommends postgresql
+      ln -sf "$(ls -d /usr/lib/postgresql/*/bin/pgbench | sort -V | tail -1)" /usr/local/bin/pgbench
+      pgbench --version
+    fi
+
+    # ── Huge pages (optional) ─────────────────────────────────────────────────
+    # Reserves huge_pages_gb of the default huge page size for the database's
+    # shared memory; a service opts in with huge_pages=on. Reserved at boot,
+    # before memory fragments, and persisted for reboots. Fails the bootstrap
+    # if the kernel reserves fewer pages, since a service with huge_pages=on
+    # would then fail to start with a less obvious error.
+    if [ "${var.huge_pages_gb}" -gt 0 ]; then
+      HP_KB=$(awk '/^Hugepagesize:/ {print $2}' /proc/meminfo)
+      HP_COUNT=$(( ${var.huge_pages_gb} * 1024 * 1024 / HP_KB ))
+      echo "vm.nr_hugepages = $HP_COUNT" > /etc/sysctl.d/99-hugepages.conf
+      sysctl -w vm.nr_hugepages="$HP_COUNT"
+      HP_TOTAL=$(awk '/^HugePages_Total:/ {print $2}' /proc/meminfo)
+      if [ "$HP_TOTAL" -lt "$HP_COUNT" ]; then
+        echo "ERROR: reserved $HP_TOTAL of $HP_COUNT huge pages ($HP_KB kB each)" >&2
+        exit 1
+      fi
+    fi
+
     # ── Performance profiling tools ───────────────────────────────────────────
     # linux-tools-$(uname -r) resolves to the correct AWS kernel tools package
     # at boot time (e.g. linux-tools-6.8.0-1021-aws). The || true prevents

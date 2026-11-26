@@ -174,3 +174,91 @@ func TestSyncTFFiles_CopiesSymlinkedShellScript(t *testing.T) {
 		t.Errorf("ignored.txt should not have been copied, err = %v", err)
 	}
 }
+
+func newExistingHostProvider(out *bytes.Buffer) *Provider {
+	p := New(Config{
+		ProviderName:   "ec2-target",
+		DefaultSSHUser: "ubuntu",
+		ArchFromInstanceType: func(instanceType string) string {
+			if instanceType == "c8gd.metal-24xl" {
+				return "arm64"
+			}
+			return "amd64"
+		},
+		Benchctl:     &config.Config{},
+		ExistingHost: true,
+	})
+	p.out = out
+	return p
+}
+
+func TestProvision_ExistingHost_ReturnsHostWithoutTofu(t *testing.T) {
+	// Any tofu call would fail the test: none must happen for an existing host.
+	installFakeTofu(t, map[string]int{"init": 1, "apply": 1, "output": 1})
+	tmp := t.TempDir()
+	bin := filepath.Join(tmp, "benchctl-linux-arm64")
+	if err := os.WriteFile(bin, []byte("dummy"), 0o755); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+
+	var out bytes.Buffer
+	p := newExistingHostProvider(&out)
+	got, err := p.Provision(context.Background(), "test-run-20260101-000000-abcdef", map[string]any{
+		"host":                 "203.0.113.7",
+		"ssh_private_key_path": "/keys/target.pem",
+		"instance_type":        "c8gd.metal-24xl",
+		"benchctl_binary":      bin,
+	})
+	if err != nil {
+		t.Fatalf("Provision: %v", err)
+	}
+	want := engine.Outputs{
+		"public_ip":            "203.0.113.7",
+		"ssh_private_key_path": "/keys/target.pem",
+		"ssh_user":             "ubuntu",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("outputs = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("outputs[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	if _, ok := got[engine.OutputKeyTofuWorkDir]; ok {
+		t.Errorf("outputs carry a tofu work dir for a host nothing provisioned: %v", got)
+	}
+}
+
+func TestProvision_ExistingHost_RequiresHostAndKey(t *testing.T) {
+	var out bytes.Buffer
+	p := newExistingHostProvider(&out)
+	_, err := p.Provision(context.Background(), "test-run-20260101-000000-abcdef", map[string]any{
+		"remote_binary_source": "fetch",
+	})
+	if err == nil {
+		t.Fatal("Provision succeeded without host and ssh_private_key_path")
+	}
+	for _, want := range []string{"config.host", "config.ssh_private_key_path"} {
+		if !bytes.Contains([]byte(err.Error()), []byte(want)) {
+			t.Errorf("error %q does not name %s", err, want)
+		}
+	}
+}
+
+func TestTeardown_ExistingHost_LeavesHostAlone(t *testing.T) {
+	installFakeTofu(t, map[string]int{"destroy": 1})
+	var out bytes.Buffer
+	p := newExistingHostProvider(&out)
+	if err := p.Teardown(context.Background(), engine.Outputs{"public_ip": "203.0.113.7"}); err != nil {
+		t.Fatalf("Teardown: %v", err)
+	}
+}
+
+func TestTargetArch_ExistingHostReadsInstanceType(t *testing.T) {
+	var out bytes.Buffer
+	p := newExistingHostProvider(&out)
+	if got := p.targetArch(map[string]any{"instance_type": "c8gd.metal-24xl"}); got != "arm64" {
+		t.Errorf("targetArch = %q, want arm64", got)
+	}
+}

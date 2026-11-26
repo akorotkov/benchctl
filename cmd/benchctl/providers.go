@@ -23,7 +23,7 @@ func init() {
 
 func listProviders(_ *cobra.Command, _ []string) error {
 	fmt.Println("Target providers:  local (alias: noop), docker-compose, opentofu, supabase")
-	fmt.Println("Driver providers:  local, ec2, gce")
+	fmt.Println("Driver providers:  local, ec2, ec2-target, gce")
 	fmt.Println("Workload adapters: go-tpc, k6, pgbench, shell")
 	fmt.Println("Collectors:        stdout, victoriametrics")
 	return nil

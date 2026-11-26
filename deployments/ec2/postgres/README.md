@@ -8,6 +8,8 @@ OpenTofu module that provisions a Postgres instance on EC2 as a benchmark target
 |----------|-------------|
 | `instance_type` | EC2 instance type (e.g. `r6i.xlarge`) |
 | `ami` | AMI ID for the Postgres image |
+| `pgbench_enabled` | Install pgbench on the instance, for the `ec2-target` driver (default `false`) |
+| `huge_pages_gb` | GiB of huge pages to reserve at boot; services opt in with `huge_pages=on` (default `0`) |
 
 ## Outputs
 

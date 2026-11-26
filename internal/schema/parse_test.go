@@ -611,3 +611,24 @@ func TestValidatePgbenchInitRejectsScript(t *testing.T) {
 		t.Errorf("error %q should mention args.script", err)
 	}
 }
+
+func TestValidateEC2TargetDriverRejectsReboot(t *testing.T) {
+	s := pgbenchScenario(schema.SuiteStep{Name: "bench", Type: "pgbench", Command: schema.PgbenchCommandRun})
+	s.Driver.Provider = schema.DriverProviderEC2Target
+	s.Suite.BetweenBenchmarks = []schema.BetweenBenchmarksStep{
+		{Name: "trim-disk", Scope: "target", Command: "trim"},
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("trim with %s: Validate() = %v, want nil", schema.DriverProviderEC2Target, err)
+	}
+
+	s.Suite.BetweenBenchmarks = append(s.Suite.BetweenBenchmarks,
+		schema.BetweenBenchmarksStep{Name: "reboot", Scope: "target", Command: "reboot"})
+	err := s.Validate()
+	if err == nil {
+		t.Fatalf("reboot with %s: Validate() = nil, want an error", schema.DriverProviderEC2Target)
+	}
+	if !strings.Contains(err.Error(), "kill the run") {
+		t.Errorf("error %q should say why reboot is rejected", err)
+	}
+}

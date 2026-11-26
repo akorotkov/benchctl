@@ -105,3 +105,36 @@ driver:
     vars:
       pgbench_enabled: true
 ```
+
+## Running pgbench on the target
+
+The `ec2-target` driver provider runs the workload on the EC2 target
+instance itself instead of on a load driver of its own, so pgbench reaches
+the database without a network hop, as in most published pgbench results.
+It provisions nothing: it hands the run to the target the way `ec2` hands it
+to its driver instance, and leaves the instance to the target's teardown.
+
+```yaml
+target:
+  provider: opentofu
+  config:
+    module: ./deployments/ec2/postgres
+    vars:
+      pgbench_enabled: true   # install pgbench on the target
+      huge_pages_gb: 90       # optional, see below
+driver:
+  provider: ec2-target
+  config:
+    host: "{{ target.outputs.public_ip }}"
+    ssh_private_key_path: "{{ target.outputs.ssh_private_key_path }}"
+    instance_type: "{{ inputs.target_instance_type }}"   # picks the binary's architecture
+```
+
+- pgbench shares the CPUs with the database, so leave it headroom (fewer
+  `jobs` than cores) or count it in when comparing.
+- `between-benchmarks` cannot `reboot` the target: the run is driven from
+  it. `benchctl validate` rejects the combination.
+- `huge_pages_gb` reserves that much memory in huge pages at boot (and fails
+  the bootstrap if the kernel cannot); a service uses them with
+  `-c huge_pages=on`. Size it to the largest shared memory segment of any
+  service, and remember the memory is unavailable for anything else.

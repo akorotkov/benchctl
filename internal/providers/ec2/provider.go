@@ -11,6 +11,7 @@ import (
 
 	"github.com/dbarena/benchctl/internal/config"
 	"github.com/dbarena/benchctl/internal/providers/sshdriver"
+	"github.com/dbarena/benchctl/internal/schema"
 )
 
 // gravitonRe matches EC2 instance family names that use Graviton (ARM64) processors.
@@ -26,6 +27,35 @@ func New(cfg *config.Config) *sshdriver.Provider {
 		Benchctl:             cfg,
 	})
 }
+
+// NewOnTarget constructs a driver Provider that runs the workload on the
+// target instance itself rather than on an instance of its own, so the load
+// generator shares the machine with the database and reaches it without a
+// network hop. The scenario points it at the target through the driver
+// config:
+//
+//	driver:
+//	  provider: ec2-target
+//	  config:
+//	    host: "{{ target.outputs.public_ip }}"
+//	    ssh_private_key_path: "{{ target.outputs.ssh_private_key_path }}"
+//	    instance_type: "{{ inputs.target_instance_type }}"
+//
+// The target module has to install whatever the workload needs (e.g.
+// pgbench_enabled in deployments/ec2/postgres), and the suite must not reboot
+// the target: that would kill the run driving it.
+func NewOnTarget(cfg *config.Config) *sshdriver.Provider {
+	return sshdriver.New(sshdriver.Config{
+		ProviderName:         ProviderNameOnTarget,
+		DefaultSSHUser:       "ubuntu",
+		ArchFromInstanceType: archFromInstanceType,
+		Benchctl:             cfg,
+		ExistingHost:         true,
+	})
+}
+
+// ProviderNameOnTarget is the scenario's driver.provider for NewOnTarget.
+const ProviderNameOnTarget = schema.DriverProviderEC2Target
 
 // archFromInstanceType returns "arm64" for Graviton (ARM) instance families and
 // "amd64" for all others. Graviton families embed 'g' immediately after the
